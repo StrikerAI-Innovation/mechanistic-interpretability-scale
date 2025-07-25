@@ -121,11 +121,11 @@ python experiments/03_hybrid_architecture/train_hybrid_sae.py
 
 | Method               | Recon. Error | Active Features | Train Time | Memory   |
 | -------------------- | ------------ | --------------- | ---------- | -------- |
-| K-Sparse SAE         | 0.031        | 289             | 1.0x       | 1.0x     |
-| Gated SAE            | 0.028        | 145             | 1.2x       | 0.8x     |
-| **HybridSAE (Ours)** | **0.029**    | **178**         | **0.7x**   | **0.6x** |
+| K-Sparse SAE         | ---          | ---             | ---        | ---      |
+| Gated SAE            | ---          | ---             | ---        | ---      |
+| **HybridSAE (Ours)** | ---          | ---             | ---        | ---      |
 
-More detailed analysis and figures available in:
+More detailed analysis and figures will be available in:
 
 * 📓 `notebooks/03_results_analysis.ipynb`
 * 📓 `notebooks/04_paper_figures.ipynb`
