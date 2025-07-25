@@ -1,4 +1,4 @@
-# 🚀 Scaling Mechanistic Interpretability to Large Language Models
+# 🚀 Scaling Mechanistic Interpretability to Large Language Models (In Dev)
 
 [![Tests](https://github.com/yourusername/mechanistic-interpretability-scale/actions/workflows/tests.yml/badge.svg)](https://github.com/yourusername/mechanistic-interpretability-scale/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
