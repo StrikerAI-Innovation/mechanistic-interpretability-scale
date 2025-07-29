@@ -1,0 +1,85 @@
+# SAE Comparison Experiment Configuration
+
+# Random seed for reproducibility
+seed: 42
+
+# Dataset configuration
+dataset: "wikitext"  # Options: wikitext, openwebtext, pile
+max_train_samples: 100000
+max_val_samples: 10000
+
+# Model configuration
+k_sparse: 128  # Number of active features for k-sparse models
+approximation_ratio: 4  # n_features / approximation_features for hybrid model
+
+# Training configuration
+training:
+  batch_size: 32
+  epochs: 10
+  learning_rate: 1e-3
+  weight_decay: 1e-4
+  warmup_steps: 1000
+  max_grad_norm: 1.0
+  scheduler_type: "cosine"  # Options: cosine, onecycle, none
+  
+  # Optimizer settings
+  optimizer:
+    betas: [0.9, 0.999]
+    eps: 1e-8
+  
+  # Resampling dead features
+  resample_frequency: 2  # Resample every N epochs
+  dead_feature_threshold: 0.001  # Activation rate below this is considered dead
+
+# Evaluation configuration
+evaluation:
+  batch_size: 64
+  metrics:
+    - reconstruction_error
+    - sparsity_level
+    - dead_features
+    - inference_time
+    - memory_usage
+    - feature_activation_distribution
+
+# Logging configuration
+logging:
+  log_interval: 100  # Log every N batches
+  save_checkpoints: true
+  checkpoint_frequency: 1  # Save every N epochs
+  
+# Hardware configuration
+hardware:
+  mixed_precision: false  # Use automatic mixed precision
+  gradient_accumulation_steps: 1
+  num_workers: 4  # DataLoader workers
+
+# Experiment specific settings
+comparison:
+  models:
+    - k_sparse
+    - gated
+    - hybrid
+    - vanilla
+  
+  # Model-specific hyperparameters
+  model_configs:
+    k_sparse:
+      use_batch_norm: false
+    gated:
+      use_relu_gate: true
+      l1_coefficient: 0.01
+    hybrid:
+      router_hidden_dim: 256
+      feature_dropout: 0.1
+    vanilla:
+      l1_coefficient: 0.01
+      tied_weights: false
+
+# Visualization settings
+visualization:
+  plot_feature_activations: true
+  plot_dead_features: true
+  plot_routing_analysis: true  # For hybrid model
+  save_format: "png"
+  dpi: 300

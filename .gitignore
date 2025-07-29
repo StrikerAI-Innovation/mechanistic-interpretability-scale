@@ -1,0 +1,121 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+.DS_Store
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data and models
+data/
+!data/.gitkeep
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+*.h5
+*.pkl
+*.pickle
+*.npy
+*.npz
+
+# Results and logs
+results/
+logs/
+wandb/
+tensorboard/
+*.log
+
+# Cache
+.cache/
+*.cache
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+
+# Documentation
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Large files
+*.tar.gz
+*.zip
+*.tar
+*.gz
+
+# Secrets and credentials
+.env
+.env.local
+.env.*.local
+config/secrets.yaml
+*.key
+*.pem
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Testing
+.tox/
+.pytest_cache/
+.hypothesis/
+
+# Profiling
+*.prof
+*.lprof
+
+# Keep empty directories
+!**/.gitkeep
