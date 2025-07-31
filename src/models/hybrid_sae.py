@@ -10,7 +10,7 @@ import numpy as np
 from typing import Dict, Optional, Tuple, List
 from .base_sae import BaseSAE
 from .k_sparse_sae import KSparseSAE
-from .gated_sae import GatedSAE
+
 
 class ComplexityRouter(nn.Module):
     """Neural network to estimate input complexity"""
