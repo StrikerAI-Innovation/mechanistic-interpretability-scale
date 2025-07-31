@@ -25,13 +25,13 @@ from collections import defaultdict
 import sys
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from src.models import KSparseSAE, GatedSAE, HybridSAE
+from src.models import KSparseSAE, HybridSAE
 from src.models.vanilla_sae import VanillaSAE
 from src.training.trainer import SAETrainer
-from src.analysis.metrics import compute_feature_metrics
+#from src.analysis.metrics import compute_feature_metrics
 from src.utils.model_loading import load_model
 from src.utils.data_loading import create_dataloader
-from src.utils.hardware_utils import get_gpu_memory, set_seed
+#from src.utils.hardware_utils import get_gpu_memory, set_seed
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Compare SAE architectures')
@@ -68,11 +68,11 @@ def create_sae_models(d_model: int, n_features: int, k_sparse: int, device: str)
             k_sparse=k_sparse,
             device=device
         ),
-        'Gated': GatedSAE(
-            d_model=d_model,
-            n_features=n_features,
-            device=device
-        ),
+        #'Gated': GatedSAE(
+        #    d_model=d_model,
+        #    n_features=n_features,
+        #    device=device
+        #),
         'Hybrid (Ours)': HybridSAE(
             d_model=d_model,
             n_features=n_features,
