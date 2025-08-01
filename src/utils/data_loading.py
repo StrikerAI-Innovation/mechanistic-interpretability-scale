@@ -73,7 +73,7 @@ def extract_activations(
             # Use mean pooling over sequence length
             activation = activation.mean(dim=1)  # [batch, hidden_dim]
         
-        all_activations.append(activation.detach().cpu())
+        all_activations.append(activation.detach().cpu().float())
     
     # Register hook
     handle = target_layer.register_forward_hook(hook_fn)

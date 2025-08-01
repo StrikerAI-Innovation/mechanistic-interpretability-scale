@@ -81,6 +81,7 @@ class KSparseSAE(BaseSAE):
         Encode with soft top-k for differentiable sparsity
         Used during training for better gradients
         """
+        x = x.float()
         pre_activation = x @ self.W_enc.T + self.b_enc
         
         if self.use_batch_norm and self.training:
