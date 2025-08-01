@@ -25,6 +25,126 @@ class ActivationDataset(Dataset):
     def __getitem__(self, idx):
         return {'activations': self.activations[idx], 'index': idx}
 
+def extract_activations(
+    model: torch.nn.Module,
+    tokenizer: AutoTokenizer,
+    texts: List[str],
+    layer_name: str,
+    max_length: int = 128,
+    batch_size: int = 32,
+    device: str = 'cuda'
+) -> torch.Tensor:
+    """
+    Extract activations from a specific layer of the model
+    
+    Args:
+        model: Language model
+        tokenizer: Tokenizer for the model
+        texts: List of text strings
+        layer_name: Name of layer to extract from (e.g., 'transformer.h.6')
+        max_length: Maximum sequence length
+        batch_size: Batch size for processing
+        device: Device to run on
+        
+    Returns:
+        Tensor of activations [num_samples, d_model]
+    """
+    model.eval()
+    model = model.to(device)
+    
+    # Find the target layer
+    target_layer = get_layer_by_name(model, layer_name)
+    if target_layer is None:
+        raise ValueError(f"Layer {layer_name} not found in model")
+    
+    # Storage for activations
+    all_activations = []
+    
+    # Hook to capture activations
+    def hook_fn(module, input, output):
+        # Handle different output formats
+        if isinstance(output, tuple):
+            activation = output[0]  # Usually the first element is the hidden states
+        else:
+            activation = output
+        
+        # If activation has sequence dimension, pool over it
+        if len(activation.shape) == 3:  # [batch, seq_len, hidden_dim]
+            # Use mean pooling over sequence length
+            activation = activation.mean(dim=1)  # [batch, hidden_dim]
+        
+        all_activations.append(activation.detach().cpu())
+    
+    # Register hook
+    handle = target_layer.register_forward_hook(hook_fn)
+    
+    try:
+        # Process texts in batches
+        with torch.no_grad():
+            for i in tqdm(range(0, len(texts), batch_size), desc="Extracting activations"):
+                batch_texts = texts[i:i + batch_size]
+                
+                # Filter out empty texts
+                batch_texts = [text for text in batch_texts if text and text.strip()]
+                if not batch_texts:
+                    continue
+                
+                # Tokenize batch
+                try:
+                    inputs = tokenizer(
+                        batch_texts,
+                        max_length=max_length,
+                        truncation=True,
+                        padding=True,
+                        return_tensors='pt'
+                    )
+                    
+                    # Move to device
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Forward pass (this will trigger the hook)
+                    _ = model(**inputs)
+                    
+                except Exception as e:
+                    print(f"Error processing batch {i//batch_size}: {e}")
+                    continue
+    
+    finally:
+        # Remove hook
+        handle.remove()
+    
+    if not all_activations:
+        raise ValueError("No activations were extracted")
+    
+    # Concatenate all activations
+    activations = torch.cat(all_activations, dim=0)
+    
+    print(f"Extracted {activations.shape[0]} activations of dimension {activations.shape[1]}")
+    
+    return activations
+
+def get_layer_by_name(model: torch.nn.Module, layer_name: str) -> Optional[torch.nn.Module]:
+    """
+    Get a layer from the model by its name
+    
+    Args:
+        model: The model
+        layer_name: Dot-separated layer name (e.g., 'transformer.h.6')
+        
+    Returns:
+        The layer module or None if not found
+    """
+    parts = layer_name.split('.')
+    current = model
+    
+    for part in parts:
+        if hasattr(current, part):
+            current = getattr(current, part)
+        else:
+            return None
+    
+    return current
+
 def create_dataloader(
     model: torch.nn.Module,
     tokenizer: AutoTokenizer,
@@ -90,21 +210,37 @@ def create_dataloader(
             # For streaming datasets
             dataset = dataset.take(max_samples)
     
+    # Extract texts from dataset
+    print(f"Extracting text from {len(dataset)} samples...")
+    texts = []
+    for sample in tqdm(dataset, desc="Loading texts"):
+        text = sample[text_field]
+        # Filter out very short texts
+        if text and len(text.strip()) > 10:
+            texts.append(text.strip())
+    
+    # Limit texts if max_samples specified
+    if max_samples is not None:
+        texts = texts[:max_samples]
+    
+    print(f"Processing {len(texts)} texts...")
+    
     # Extract activations
     print(f"Extracting activations from layer {layer_name}...")
     activations = extract_activations(
         model=model,
         tokenizer=tokenizer,
-        texts=[sample[text_field] for sample in dataset],
+        texts=texts,
         layer_name=layer_name,
         max_length=max_length,
-        batch_size=batch_size,
+        batch_size=32,  # Use smaller batch for activation extraction
         device=device
     )
     
     # Cache activations if requested
     if cache_dir is not None:
         cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / f"{model.__class__.__name__}_{layer_name}_{dataset_name}_{split}_{max_samples}.pkl"
         print(f"Caching activations to {cache_file}")
         with open(cache_file, 'wb') as f:
             pickle.dump({
@@ -114,9 +250,46 @@ def create_dataloader(
                     'layer_name': layer_name,
                     'dataset': dataset_name,
                     'split': split,
-                    'max_samples': max_samples
+                    'max_samples': max_samples,
+                    'num_samples': len(activations),
+                    'd_model': activations.shape[1]
                 }
             }, f)
     
     # Create dataset and dataloader
-    activation_dataset = ActivationDataset(activations)
+    activation_dataset = ActivationDataset(activations, {
+        'layer_name': layer_name,
+        'dataset_name': dataset_name,
+        'split': split
+    })
+    
+    return DataLoader(
+        activation_dataset, 
+        batch_size=batch_size, 
+        shuffle=(split == 'train'), 
+        num_workers=num_workers,
+        pin_memory=True if device == 'cuda' else False
+    )
+
+def load_cached_activations(cache_file: Path) -> Optional[torch.Tensor]:
+    """Load cached activations if available"""
+    if cache_file.exists():
+        try:
+            with open(cache_file, 'rb') as f:
+                data = pickle.load(f)
+            return data['activations']
+        except Exception as e:
+            print(f"Failed to load cache: {e}")
+            return None
+    return None
+
+def get_activation_stats(activations: torch.Tensor) -> Dict[str, float]:
+    """Get statistics about activations"""
+    return {
+        'mean': activations.mean().item(),
+        'std': activations.std().item(),
+        'min': activations.min().item(),
+        'max': activations.max().item(),
+        'sparsity': (activations == 0).float().mean().item(),
+        'shape': list(activations.shape)
+    }
