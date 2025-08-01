@@ -41,6 +41,7 @@ class ComplexityRouter(nn.Module):
             complexity_scores: Continuous complexity scores [0, 1]
             use_deep: Boolean mask for deep analysis
         """
+        x = x.to(self.network[0].weight.device)
         complexity_scores = self.network(x).squeeze(-1)
         use_deep = complexity_scores > self.threshold
         
