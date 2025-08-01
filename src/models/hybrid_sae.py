@@ -41,7 +41,7 @@ class ComplexityRouter(nn.Module):
             complexity_scores: Continuous complexity scores [0, 1]
             use_deep: Boolean mask for deep analysis
         """
-        x = x.to(self.network[0].weight.device)
+        x = x.to(next(self.parameters()).device)
         complexity_scores = self.network(x).squeeze(-1)
         use_deep = complexity_scores > self.threshold
         
@@ -126,6 +126,10 @@ class HybridSAE(BaseSAE):
         # Track routing statistics
         self.register_buffer('routing_stats', torch.zeros(2))  # [fast_count, deep_count]
         
+        # Now move entire model to device
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.to(self.device)
+
     def encode(self, x: torch.Tensor, force_mode: Optional[str] = None) -> torch.Tensor:
         """
         Adaptively encode based on input complexity
@@ -137,6 +141,9 @@ class HybridSAE(BaseSAE):
         Returns:
             Sparse features [batch_size, n_features]
         """
+        # Get the model's device from one of its parameters
+        device = next(self.parameters()).device
+        x = x.to(device)
         batch_size = x.shape[0]
         
         # Get routing decisions
@@ -217,6 +224,7 @@ class HybridSAE(BaseSAE):
         Returns:
             Dictionary with outputs and metrics
         """
+        x = x.to(next(self.parameters()).device)
         # Encode with routing
         features = self.encode(x)
         
