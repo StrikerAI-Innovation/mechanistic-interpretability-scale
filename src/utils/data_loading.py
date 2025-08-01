@@ -125,7 +125,7 @@ def extract_activations(
 
 def get_layer_by_name(model: torch.nn.Module, layer_name: str) -> Optional[torch.nn.Module]:
     """
-    Get a layer from the model by its name
+    Get a layer from the model by its name with improved error handling
     
     Args:
         model: The model
@@ -137,13 +137,94 @@ def get_layer_by_name(model: torch.nn.Module, layer_name: str) -> Optional[torch
     parts = layer_name.split('.')
     current = model
     
-    for part in parts:
+    print(f"Trying to access layer: {layer_name}")
+    print(f"Parts: {parts}")
+    
+    for i, part in enumerate(parts):
+        print(f"  Step {i}: Looking for '{part}' in {type(current).__name__}")
+        
         if hasattr(current, part):
             current = getattr(current, part)
+            print(f"    ✓ Found: {type(current).__name__}")
         else:
+            # Print available attributes for debugging
+            available = [name for name, _ in current.named_children()]
+            print(f"    ✗ Not found. Available children: {available}")
             return None
     
+    print(f"Successfully found layer: {type(current).__name__}")
     return current
+
+def get_all_layer_names(model: torch.nn.Module, max_depth: int = 3) -> List[str]:
+    """
+    Get all possible layer names in the model up to a certain depth.
+    """
+    def _get_names(module, prefix="", depth=0):
+        names = []
+        if depth >= max_depth:
+            return names
+        
+        for name, child in module.named_children():
+            full_name = f"{prefix}.{name}" if prefix else name
+            names.append(full_name)
+            names.extend(_get_names(child, full_name, depth + 1))
+        
+        return names
+    
+    return _get_names(model)
+
+def find_gpt2_layers(model) -> List[str]:
+    """
+    Find GPT-2 transformer block layers specifically.
+    """
+    layer_names = []
+    
+    # GPT-2 typically has structure: transformer.h.{i} where i is layer index
+    if hasattr(model, 'transformer') and hasattr(model.transformer, 'h'):
+        num_layers = len(model.transformer.h)
+        print(f"Found {num_layers} transformer layers")
+        
+        for i in range(num_layers):
+            layer_names.append(f"transformer.h.{i}")
+    
+    return layer_names
+
+def auto_find_layer(model, target_layer_idx: int = 6) -> Optional[str]:
+    """
+    Automatically find the correct layer name for a given layer index.
+    """
+    print(f"Auto-finding layer {target_layer_idx}...")
+    
+    # Try common patterns
+    patterns = [
+        f"transformer.h.{target_layer_idx}",
+        f"h.{target_layer_idx}",
+        f"layers.{target_layer_idx}",
+        f"transformer.layers.{target_layer_idx}",
+        f"model.layers.{target_layer_idx}",
+        f"transformer.block.{target_layer_idx}",
+    ]
+    
+    for pattern in patterns:
+        if get_layer_by_name(model, pattern) is not None:
+            print(f"Found working pattern: {pattern}")
+            return pattern
+    
+    # If patterns don't work, search through all layers
+    all_names = get_all_layer_names(model)
+    
+    # Look for layer names containing the target index
+    candidates = [name for name in all_names if str(target_layer_idx) in name]
+    print(f"Candidate layers containing '{target_layer_idx}': {candidates}")
+    
+    # Try each candidate
+    for candidate in candidates:
+        layer = get_layer_by_name(model, candidate)
+        if layer is not None and hasattr(layer, 'forward'):
+            print(f"Found working candidate: {candidate}")
+            return candidate
+    
+    return None
 
 def create_dataloader(
     model: torch.nn.Module,
@@ -293,3 +374,84 @@ def get_activation_stats(activations: torch.Tensor) -> Dict[str, float]:
         'sparsity': (activations == 0).float().mean().item(),
         'shape': list(activations.shape)
     }
+
+def print_model_structure(model, max_depth=3, current_depth=0, prefix=""):
+    """
+    Print the structure of a model to find correct layer names.
+    """
+    if current_depth > max_depth:
+        return
+    
+    for name, module in model.named_children():
+        full_name = f"{prefix}.{name}" if prefix else name
+        print("  " * current_depth + f"{full_name}: {type(module).__name__}")
+        
+        # If it's a transformer layer, print its children too
+        if hasattr(module, 'named_children') and current_depth < max_depth:
+            print_model_structure(module, max_depth, current_depth + 1, full_name)
+
+def find_transformer_layers(model):
+    """
+    Find all transformer layer names in the model.
+    """
+    layer_names = []
+    
+    def find_layers(module, prefix=""):
+        for name, child in module.named_children():
+            full_name = f"{prefix}.{name}" if prefix else name
+            
+            # Check if this looks like a transformer layer
+            if ('layer' in name.lower() or 'block' in name.lower() or 
+                'h' in name or 'transformer' in name.lower()):
+                layer_names.append(full_name)
+            
+            # Recursively search children
+            find_layers(child, full_name)
+    
+    find_layers(model)
+    return layer_names
+
+# Quick test function you can run
+def debug_gpt2_layers():
+    from transformers import AutoModel
+    
+    print("Loading GPT-2 model for inspection...")
+    model = AutoModel.from_pretrained("gpt2")
+    
+    print("\n" + "="*50)
+    print("MODEL STRUCTURE:")
+    print("="*50)
+    print_model_structure(model, max_depth=2)
+    
+    print("\n" + "="*50)
+    print("POTENTIAL TRANSFORMER LAYERS:")
+    print("="*50)
+    layers = find_transformer_layers(model)
+    for i, layer in enumerate(layers):
+        print(f"{i}: {layer}")
+    
+    print("\n" + "="*50)
+    print("TESTING LAYER ACCESS:")
+    print("="*50)
+    
+    # Test different naming conventions
+    test_names = [
+        "transformer.h.6",
+        "h.6", 
+        "transformer.h.6.mlp",
+        "transformer.h.6.attn",
+        "layers.6",
+        "transformer.layers.6"
+    ]
+    
+    for name in test_names:
+        try:
+            layer = get_layer_by_name(model, name)
+            if layer is not None:
+                print(f"✓ Found: {name} -> {type(layer).__name__}")
+            else:
+                print(f"✗ Not found: {name}")
+        except Exception as e:
+            print(f"✗ Error accessing {name}: {e}")
+    
+    return model
