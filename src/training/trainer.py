@@ -70,6 +70,8 @@ class SAETrainer:
         self.model.train()
         self.optimizer.zero_grad()
         
+        # Move data to device
+        x = x.to(self.device)
         # Forward pass
         output = self.model(x)
         
@@ -216,6 +218,7 @@ class SAETrainer:
                 else:
                     x = batch.to(self.device)
                 
+                x = x.to(self.device)
                 # Forward pass
                 output = self.model(x)
                 
