@@ -197,8 +197,8 @@ def auto_find_layer(model, target_layer_idx: int = 6) -> Optional[str]:
     
     # Try common patterns
     patterns = [
-        f"transformer.h.{target_layer_idx}",
         f"h.{target_layer_idx}",
+        f"transformer.h.{target_layer_idx}",
         f"layers.{target_layer_idx}",
         f"transformer.layers.{target_layer_idx}",
         f"model.layers.{target_layer_idx}",
