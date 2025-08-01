@@ -179,47 +179,115 @@ class BaseSAE(nn.Module, ABC):
             'dead_features': (feature_counts == 0).sum().item()
         }
     
-    def resample_dead_features(self, 
-                              activation_data: torch.Tensor,
-                              threshold: float = 0.01) -> int:
+    def resample_dead_features(self, sample_activations: torch.Tensor, threshold: float = 1e-6) -> int:
         """
-        Resample dead features with new random directions
+        Resample dead features by reinitializing them with directions from high-loss samples.
         
-        Args:
-            activation_data: Sample of activation data
-            threshold: Minimum activation rate to not be considered dead
-            
         Returns:
-            Number of resampled features
+            Number of features resampled
         """
-        with torch.no_grad():
-            # Get feature activation statistics
-            features = self.encode(activation_data)
-            activation_rate = (features > 0).float().mean(dim=0)
-            
-            # Identify dead features
-            dead_mask = activation_rate < threshold
-            n_dead = dead_mask.sum().item()
-            
-            if n_dead > 0:
-                # Compute PCA of activation data
-                U, S, V = torch.svd(activation_data.T)
-                
-                # Reinitialize dead features with top PCA components
-                # (with some noise to break symmetry)
-                for i, is_dead in enumerate(dead_mask):
-                    if is_dead:
-                        # Pick a random PCA component
-                        component_idx = torch.randint(0, min(50, V.shape[1]), (1,)).item()
-                        new_direction = V[:, component_idx] + 0.1 * torch.randn_like(V[:, component_idx])
-                        
-                        # Update encoder weight
-                        self.W_enc.data[i] = new_direction / new_direction.norm()
-                        
-                        # Reset bias
-                        self.b_enc.data[i] = 0
+        if sample_activations.dim() != 2:
+            raise ValueError(f"Expected 2D tensor, got {sample_activations.dim()}D")
         
-        return n_dead
+        batch_size, d_model = sample_activations.shape
+        
+        # Forward pass to get current features
+        with torch.no_grad():
+            result = self.forward(sample_activations)
+            features = result['features']
+            reconstruction = result['reconstruction']
+            
+            # Find dead features (those that never activate)
+            feature_max_activations = features.max(dim=0)[0]  # Max activation per feature
+            dead_features = feature_max_activations < threshold
+            dead_indices = torch.where(dead_features)[0]
+            
+            if len(dead_indices) == 0:
+                return 0
+            
+            print(f"Found {len(dead_indices)} dead features to resample")
+            
+            # Compute reconstruction errors per sample
+            reconstruction_errors = torch.sum((sample_activations - reconstruction) ** 2, dim=1)
+            
+            # Sort samples by reconstruction error (highest first)
+            sorted_indices = torch.argsort(reconstruction_errors, descending=True)
+            
+            n_resampled = 0
+            
+            for i, dead_feature_idx in enumerate(dead_indices):
+                if i >= len(sorted_indices):
+                    break
+                    
+                # Take the sample with highest reconstruction error (not yet used)
+                sample_idx = sorted_indices[i % len(sorted_indices)]
+                sample_activation = sample_activations[sample_idx]  # Shape: [d_model]
+                
+                # Ensure we have the right dimensions
+                if sample_activation.shape[0] != d_model:
+                    print(f"Warning: sample_activation shape {sample_activation.shape} doesn't match d_model {d_model}")
+                    continue
+                
+                # Create new direction from the sample
+                new_direction = sample_activation.clone()
+                
+                # Add some noise for diversity
+                noise = torch.randn_like(new_direction) * 0.01
+                new_direction = new_direction + noise
+                
+                # Normalize the direction
+                direction_norm = new_direction.norm()
+                if direction_norm > 1e-8:
+                    new_direction = new_direction / direction_norm
+                else:
+                    # If norm is too small, use random direction
+                    new_direction = torch.randn_like(new_direction)
+                    new_direction = new_direction / new_direction.norm()
+                
+                # Ensure shapes match before assignment
+                if hasattr(self, 'W_enc'):
+                    # For standard SAE
+                    if self.W_enc.data.shape[1] == d_model:  # W_enc is [n_features, d_model]
+                        self.W_enc.data[dead_feature_idx] = new_direction
+                    elif self.W_enc.data.shape[0] == d_model:  # W_enc is [d_model, n_features]
+                        self.W_enc.data[:, dead_feature_idx] = new_direction
+                    else:
+                        print(f"Warning: W_enc shape {self.W_enc.data.shape} doesn't match expected dimensions")
+                        continue
+                elif hasattr(self, 'encoder') and hasattr(self.encoder, 'weight'):
+                    # For nn.Linear encoder
+                    if self.encoder.weight.data.shape[1] == d_model:  # weight is [n_features, d_model]
+                        self.encoder.weight.data[dead_feature_idx] = new_direction
+                    elif self.encoder.weight.data.shape[0] == d_model:  # weight is [d_model, n_features]
+                        self.encoder.weight.data[:, dead_feature_idx] = new_direction
+                    else:
+                        print(f"Warning: encoder.weight shape {self.encoder.weight.data.shape} doesn't match expected dimensions")
+                        continue
+                else:
+                    print("Warning: Could not find encoder weights to resample")
+                    continue
+                
+                # Reset decoder weights if not tied
+                if hasattr(self, 'W_dec') and self.W_dec is not None:
+                    if self.W_dec.data.shape[0] == d_model:  # W_dec is [d_model, n_features]
+                        self.W_dec.data[:, dead_feature_idx] = new_direction * 0.1  # Smaller initial decoder weights
+                    elif self.W_dec.data.shape[1] == d_model:  # W_dec is [n_features, d_model]
+                        self.W_dec.data[dead_feature_idx] = new_direction * 0.1
+                elif hasattr(self, 'decoder') and hasattr(self.decoder, 'weight'):
+                    if self.decoder.weight.data.shape[0] == d_model:  # weight is [d_model, n_features]
+                        self.decoder.weight.data[:, dead_feature_idx] = new_direction * 0.1
+                    elif self.decoder.weight.data.shape[1] == d_model:  # weight is [n_features, d_model]
+                        self.decoder.weight.data[dead_feature_idx] = new_direction * 0.1
+                
+                # Reset bias if it exists
+                if hasattr(self, 'b_enc') and self.b_enc is not None:
+                    self.b_enc.data[dead_feature_idx] = -0.1  # Slight negative bias to encourage sparsity
+                elif hasattr(self, 'encoder') and hasattr(self.encoder, 'bias') and self.encoder.bias is not None:
+                    self.encoder.bias.data[dead_feature_idx] = -0.1
+                
+                n_resampled += 1
+            
+            return n_resampled
     
     def get_feature_importance(self, 
                               features: torch.Tensor,

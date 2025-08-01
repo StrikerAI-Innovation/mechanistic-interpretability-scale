@@ -228,8 +228,13 @@ def train_sae_model(model_name, sae_model, train_loader, val_loader, args, confi
             else:
                 sample_x = sample_data.to(device)
             
-            n_resampled = sae_model.resample_dead_features(sample_x)
-            print(f"  Resampled {n_resampled} dead features")
+            try:
+                n_resampled = sae_model.resample_dead_features(sample_x)
+                print(f"  Resampled {n_resampled} dead features")
+            except Exception as e:
+                print(f"  Warning: Failed to resample dead features: {e}")
+                print(f"  Continuing without resampling...")
+                n_resampled = 0
     
     print(f"\nBest validation loss: {best_val_loss:.4f} at epoch {best_epoch+1}")
     
