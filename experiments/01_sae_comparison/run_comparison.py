@@ -37,7 +37,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Compare SAE architectures')
     parser.add_argument('--model', type=str, default='gpt2', 
                        choices=['gpt2', 'gpt2-medium', 'gpt2-large', 'llama-7b', 'mistral-7b'])
-    parser.add_argument('--layer', type=int, default=6,
+    parser.add_argument('--layer', type=int, default='6',
                        help='Which layer to analyze')
     parser.add_argument('--n_features', type=int, default=32768,
                        help='Number of SAE features')
@@ -460,7 +460,7 @@ def main():
     
     # Determine layer name format
     if 'gpt2' in args.model:
-        layer_name = f"transformer.h.{args.layer}"
+        layer_name = f"h.{args.layer}"
     elif 'llama' in args.model:
         layer_name = f"model.layers.{args.layer}"
     elif 'mistral' in args.model:
