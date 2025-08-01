@@ -28,10 +28,10 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from src.models import KSparseSAE, HybridSAE
 from src.models.vanilla_sae import VanillaSAE
 from src.training.trainer import SAETrainer
-#from src.analysis.metrics import compute_feature_metrics
+from src.analysis.analysis_metrics import compute_feature_metrics
 from src.utils.model_loading import load_model
 from src.utils.data_loading import create_dataloader
-#from src.utils.hardware_utils import get_gpu_memory, set_seed
+from src.utils.hardware_utils import get_gpu_memory, set_seed
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Compare SAE architectures')
